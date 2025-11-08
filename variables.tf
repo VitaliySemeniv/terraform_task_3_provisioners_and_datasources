@@ -1,6 +1,19 @@
-variable "resource_group_name" { default = "rg-nginx-demo" }
-variable "location" { default = "West Europe" }
+variable "resource_group_name" {
+  type    = string
+  default = "rg-nginx-demo"
+}
 
-# Для демо можна пароль; у реалі краще SSH ключ
-variable "vm_admin_username" { default = "azureuser" }
-variable "vm_admin_password" { default = "DemoPass123!" }
+variable "vm_name" {
+  type    = string
+  default = "nginx-vm"
+}
+
+variable "public_ip_name" {
+  type    = string
+  default = "nginx-vm-ip"
+}
+
+variable "vm_admin_username" {
+  type    = string
+  default = "azureuser"
+}

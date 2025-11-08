@@ -1,30 +1,20 @@
-resource "azurerm_linux_virtual_machine" "nginx_vm" {
-  name                = "nginx-vm"
-  resource_group_name = data.azurerm_resource_group.rg.name
-  location            = data.azurerm_resource_group.rg.location
-  size                = "Standard_B1s"
+# Провізіонуємо ІСНУЮЧУ VM через SSH (ключ) + копіюємо index.html і ставимо Nginx
+# ПРИМІТКА: на VM має бути дозволений sudo без пароля (NOPASSWD),
+# як ти вже робив через az vm run-command.
 
-  # ЛОГІН ПО КЛЮЧУ (тільки цей варіант)
-  admin_username                  = var.vm_admin_username
-  disable_password_authentication = true
-
-  admin_ssh_key {
-    username   = var.vm_admin_username
-    public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
+resource "null_resource" "provision_existing_vm" {
+  triggers = {
+    vm_id      = data.azurerm_virtual_machine.vm.id
+    index_hash = filesha1("index.html")
   }
 
-  network_interface_ids = [data.azurerm_network_interface.nic.id]
-
-  os_disk {
-    caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
-  }
-
-  source_image_reference {
-    publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-jammy"
-    sku       = "22_04-lts"
-    version   = "latest"
+  connection {
+    type        = "ssh"
+    host        = data.azurerm_public_ip.pip.ip_address
+    user        = var.vm_admin_username
+    private_key = file(pathexpand("~/.ssh/id_rsa"))
+    agent       = false
+    timeout     = "10m"
   }
 
   provisioner "file" {
@@ -34,19 +24,22 @@ resource "azurerm_linux_virtual_machine" "nginx_vm" {
 
   provisioner "remote-exec" {
     inline = [
-      "sudo apt-get update -y",
-      "sudo apt-get install -y nginx",
-      "sudo mv /tmp/index.html /var/www/html/index.html",
-      "sudo systemctl enable nginx",
-      "sudo systemctl restart nginx"
-    ]
-  }
+      # дочекатись cloud-init, якщо є
+      "if command -v cloud-init >/dev/null 2>&1; then sudo -n cloud-init status --wait || true; fi",
 
-  # Підключення для провізіонерів — ПРИВАТНИЙ КЛЮЧ
-  connection {
-    type        = "ssh"
-    host        = data.azurerm_public_ip.pip.ip_address
-    user        = var.vm_admin_username
-    private_key = file(pathexpand("~/.ssh/id_rsa"))
+      # інколи apt залочений автооновленнями — чекаємо
+      "for i in $(seq 1 30); do sudo -n fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || sudo -n fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || break; echo 'APT locked, wait...'; sleep 5; done",
+
+      "export DEBIAN_FRONTEND=noninteractive",
+      "sudo -n apt-get update -y",
+      "sudo -n apt-get install -y nginx",
+
+      "sudo -n mv /tmp/index.html /var/www/html/index.html",
+      "sudo -n systemctl enable nginx",
+      "sudo -n systemctl restart nginx",
+
+      # швидка валідація
+      "curl -sSf http://localhost >/dev/null || (sudo -n journalctl -u nginx --no-pager | tail -n 50 && exit 1)"
+    ]
   }
 }

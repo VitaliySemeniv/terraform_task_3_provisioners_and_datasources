@@ -1,14 +1,19 @@
 terraform {
+  required_version = ">= 1.5.0"
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
     }
   }
 }
 
 provider "azurerm" {
   features {}
-  subscription_id = "7c43b80f-286d-4af9-9c5f-c34a65078107"
-  tenant_id       = "dc2e9dea-18de-47c9-a622-68c6067d0c69"
+  # Працює з поточною підпискою з `az login`.
+  # Якщо потрібно — можна вказати subscription_id тут.
 }
